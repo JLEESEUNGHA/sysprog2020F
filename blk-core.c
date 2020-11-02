@@ -2108,7 +2108,7 @@ typedef struct bio_blob_o_write_info {
 } BB;
 
 
-#define MAX_BBQ_LEN 10000
+#define MAX_BBQ_LEN 10000 //one greater than the actual greatest possible size of the queue.
 typedef struct bbqueue {
 	BB *queue;
 	unsigned int head;
@@ -2116,8 +2116,13 @@ typedef struct bbqueue {
 } BBQ;
 
 BB q[MAX_BBQ_LEN];
-BBQ g_bbq = { .queue = q, .head = 0, .next_pos = 1};
+BBQ g_bbq = { .queue = q, .head = 0, .next_pos = 0};
 unsigned short yummy = 0; //yummy should equal 1 when the queue has been filled at least once.
+
+EXPORT_SYMBOL(MAX_BBQ_LEN);
+EXPORT_SYMBOL(BBQ);
+EXPORT_SYMBOL(g_bbq);
+
 
 /*
  * append_to_bbq - returns a negative value on failure.
@@ -2137,14 +2142,14 @@ int append_to_bbq(BBQ *bbq, sector_t addr, char *dev_name, ktime_t time) {
 	if (blob == NULL) {
 		return -2;
 	}
-	
+
 	/* fill up the blob */
 	blob->sector_addr = addr;
 	blob->device_name = dev_name;
 	blob->time = time;
 
-	
-	/* increment head position if the BB at the head has been overwritten */
+	/* increment head position if the BB at the head will be overwritten */
+	bbq->next_pos = (bbq->next_pos + 1) % MAX_BBQ_LEN;
 	if (bbq->next_pos == bbq->head) {
 		bbq->head++;
 		
@@ -2152,7 +2157,6 @@ int append_to_bbq(BBQ *bbq, sector_t addr, char *dev_name, ktime_t time) {
 		yummy = 1;
 		//*/
 	}
-	bbq->next_pos = (bbq->next_pos + 1) % MAX_BBQ_LEN;
 
 	/* return next_pos on success */	
 	return bbq->next_pos;	
@@ -2187,7 +2191,7 @@ blk_qc_t submit_bio(int rw, struct bio *bio)
 			 */
 			char *dev_name_buf = (char*) kmalloc(sizeof(char) * BDEVNAME_SIZE, GFP_KERNEL);
 			if (bdevname(bio->bi_bdev, dev_name_buf) == NULL) {
-				printk("ERROR: Device name empty after bdevname().\n");
+				printk(KERN_ERROR "ERROR: Device name empty after bdevname().\n");
 			} else {
 				append_to_bbq(&g_bbq,
 					bio->bi_iter.bi_sector,
@@ -2208,7 +2212,7 @@ blk_qc_t submit_bio(int rw, struct bio *bio)
 			*/
 				
 			unsigned int pos = (g_bbq.next_pos - 1) % MAX_BBQ_LEN;
-			printk("G_BBQ: WRITE to block %u on %s (%u sectors) at time %u\n"
+			printk(KERN_DEBUG "G_BBQ: WRITE to block %u on %s (%u sectors) at time %u\n"
 				"Data saved at pos %d. %s\n",
 				g_bbq.queue[pos].sector_addr,
 				g_bbq.queue[pos].device_name,
