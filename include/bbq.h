@@ -12,7 +12,7 @@ typedef struct bio_blob_o_write_info {
 } BB;
 
 
-#define MAX_BBQ_LEN 1000 //one greater than the actual greatest possible size of the queue.
+#define MAX_BBQ_LEN 50000 //one greater than the actual greatest possible size of the queue.
 typedef struct bbqueue {
 	BB *queue;
 	unsigned int head;
