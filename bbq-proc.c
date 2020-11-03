@@ -34,6 +34,7 @@ static ssize_t bbq_read(struct file *file,
 
     // loop until the end of the queue is reached.
     static unsigned int curr_bbq_pos = g_bbq.head;
+    int len_message = 0;
 
     if (curr_bbq_pos != g_bbq.next_pos) {
         char message[MAX_BBQ_MSG_LEN];
@@ -41,25 +42,26 @@ static ssize_t bbq_read(struct file *file,
 	curr_bbq_pos = (curr_bbq_pos + 1) % MAX_BBQ_LEN;
 
         // generate message string
-        int len_message = sprintf(message, "sector_addr: %d | device_name: %s | time: %u\n" ,
+        len_message = sprintf(message, "sector_addr: %d | device_name: %s | time: %u\n" ,
                         blob.sector_addr, blob.device_name, blob.time);
 
         // copy string to user buffer
         if (len_message > len) {//(total_len + len_message > len) {
             printk(KERN_INFO "BBQ: Out of buffer space. Stopping read operation...\n");
-            break;
+            return 0;
+            //break;
         }
         int cpyf_len = copy_to_user(user_buffer, message, len_message);
         if (cpyf_len) {
 	    printk(KERN_ERR "BBQ: Error while copying data to user space. Stopping read operation...\n");
-            break;
+	    return 0;
+            //break;
         }
 
 	//printk(KERN_INFO "len_message: %d | currpos: %d | cpyf_len: %d | len: %d \n", len_message, curr_bbq_pos, cpyf_len, len);
 	//user_buffer += len_message;
         //total_len += len_message;
     } else {
-        int len_message = 0;
 	curr_bbq_pos = g_bbq.head;
     }
      
