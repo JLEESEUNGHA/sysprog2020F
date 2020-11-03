@@ -29,12 +29,17 @@ static ssize_t bbq_read(struct file *file,
                         char __user *user_buffer,
                         size_t len,
                         loff_t *offset) {
-    printk(KERN_INFO "Reading BBQ...\n");
-    //static unsigned long total_len = 0; // the total number of bytes copied to the user buffer.
-
+    
     // loop until the end of the queue is reached.
-    static unsigned int curr_bbq_pos = g_bbq.head;
+    static unsigned int curr_bbq_pos = 0;
+    static unsigned int finished = 1;
     int len_message = 0;
+
+    if (finished) {
+        printk(KERN_INFO "Reading BBQ...\n");
+        curr_bbq_pos = g_bbq.head;
+        finished = 0;
+    }
 
     if (curr_bbq_pos != g_bbq.next_pos) {
         char message[MAX_BBQ_MSG_LEN];
@@ -46,26 +51,23 @@ static ssize_t bbq_read(struct file *file,
                         blob.sector_addr, blob.device_name, blob.time);
 
         // copy string to user buffer
-        if (len_message > len) {//(total_len + len_message > len) {
+        if (len_message > len) {
             printk(KERN_INFO "BBQ: Out of buffer space. Stopping read operation...\n");
             return 0;
-            //break;
         }
         int cpyf_len = copy_to_user(user_buffer, message, len_message);
         if (cpyf_len) {
 	    printk(KERN_ERR "BBQ: Error while copying data to user space. Stopping read operation...\n");
 	    return 0;
-            //break;
         }
 
-	//printk(KERN_INFO "len_message: %d | currpos: %d | cpyf_len: %d | len: %d \n", len_message, curr_bbq_pos, cpyf_len, len);
-	//user_buffer += len_message;
-        //total_len += len_message;
     } else {
 	curr_bbq_pos = g_bbq.head;
+        finished = 1;
+        printk(KERN_INFO "Finished reading BBQ.\n");
     }
      
-    return len_message;//total_len;
+    return len_message;
 }
 
 static ssize_t bbq_write(struct file *file,
