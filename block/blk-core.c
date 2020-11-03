@@ -2101,7 +2101,7 @@ EXPORT_SYMBOL(generic_make_request);
 
 #include <bbq.h>
 
-static BB q[MAX_BBQ_LEN];
+BB q[MAX_BBQ_LEN];
 BBQ g_bbq = { .queue = q, .head = 0, .next_pos = 0};
 unsigned short yummy = 0; //yummy should equal 1 when the queue has been filled at least once.
 
