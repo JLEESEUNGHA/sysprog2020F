@@ -10,15 +10,15 @@
     #include <netinet/in.h>
 #endif
 
-#define BUF_LEN 256
+#define BUF_LEN 2048
 
 int test_thread(void *test_data);
 
 int main(int argc, char *argv[]) {
     char buf[BUF_LEN];
     struct sockaddr_in server_addr, client_addr;
-    int client_fd;
-    int n_port, target_port[BUF_LEN];
+    int client_fd, n_port;
+    unsigned short target_port[BUF_LEN];
     
 
     // read the number of ports to create
@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
             printf("Not enough ports specified.\n");
             return 0;
         }
-        sscanf(argv[i + 2], "%d", &target_port[i]);
+        sscanf(argv[i + 2], "%u", &target_port[0]);
     }
 
 
@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
     // initialise server_addr 
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(1111);
+    server_addr.sin_port = htons(target_port[0]);
     server_addr.sin_addr.s_addr = inet_addr("192.168.56.101");
 
     // attempt connection(s)
@@ -60,14 +60,33 @@ int main(int argc, char *argv[]) {
         printf("Connection failed.\n");
         return -1;
     }
+
+
+    // receive data from server
+    int count, pos, break_flag = 0;
+    FILE *file = fopen("datalog", "a+");
+
     while (1) {
-        if (read(client_fd, buf, 0) == 0) {
-            continue;
-        }
-        printf("%s", buf);
-        if (strcmp(buf, "@@@@@")) {
+        if ((count = read(client_fd, buf, BUF_LEN - 1)) == 0) {
+            printf("No more characters to read.");
             break;
         }
+        if (pos = strstr(buf, "@@@@@") != NULL) {
+            buf[pos + 4] = '\0';
+            break_flag = 1;
+        }
+
+        // write to file
+        fprintf(file, "<time>|%d|%s\n", count, buf);
+        if (break_flag) {
+            break;
+        }
+    }
+
+    // close connection
+    if (close(client_fd)) {
+        printf("Error closing file.\n");
+        return -1;
     }
     //*/
 
@@ -87,7 +106,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
     //*/
-
+    return 0;
 }
 
 int test_thread(void *test_data) {
