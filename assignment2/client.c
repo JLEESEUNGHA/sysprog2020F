@@ -12,7 +12,7 @@
     #include <netinet/in.h>
 #endif
 
-#define BUF_LEN 2048 // max msg size approx. 1500
+#define BUF_LEN 4096 // msg size of larger msgs approx. 1500
 #define MAX_PORT_NO 65355
 
 void * test_thread(void *test_data);
@@ -130,20 +130,16 @@ int create_connection_thread(void *args) {
     int count, break_flag = 0;
     char filename[BUF_LEN];
     sprintf(filename, "%u-%u.txt", target_port, client_fd);
-    /*strcat(filename, itoa(target_port));
-    strcat(filename, "-");
-    strcat(filename, itoa(client_fd));
-    strcat(filename, ".txt");*/
     FILE *file = fopen(filename, "a+");
 
     while (1) {
         // keep reading from server
+        count = 0;
+        buf[0] = '\0';
         if ((count = read(client_fd, buf, BUF_LEN - 1)) == 0) {
             printf("No more characters to read.");
             break;
         }
-
-        // stop-gap fix
         buf[count] = '\0';
 
         // check if "@@@@@" is inside the buffer
@@ -155,8 +151,21 @@ int create_connection_thread(void *args) {
             break_flag = 1;
         }
 
+        static const int FTIME_SIZE = sizeof("HH:MM:SS.MLS");
+        struct timespec ts;
+        struct tm *timeinfo;
+        char time_buf[FTIME_SIZE];
+        char msec_buf[3];
+        
+        clock_gettime(CLOCK_REALTIME, &ts);
+        timeinfo = localtime(&ts.tv_nsec);
+        
+        strftime(time_buf, FTIME_SIZE, "%H:%M:%S", timeinfo);
+        sprintf(msec_buf, "%03d", (ts.tv_nsec % 1000000000) / 1000000); // truncate
+        strcat(time_buf, msec_buf);
+
         // write to file
-        fprintf(file, "<time>|%d|%s\n", count, buf);
+        fprintf(file, "%s|%d|%s\n", time_buf, count, buf);
 
         // exit loop if break flag is set
         if (break_flag) {
@@ -166,8 +175,11 @@ int create_connection_thread(void *args) {
 
     // close connection
     if (close(client_fd)) {
-        printf("Error closing file.\n");
+        printf("Error closing socket.\n");
         return -1;
+    }
+    if (fclose(file)) {
+        printf("Error closing file.\n");
     }
     //free(&server_addr);
     //*/
