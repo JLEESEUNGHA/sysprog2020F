@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
     void *thread_func = &create_connection_thread;
 
     for (int i = 0; i < n_port; ++i) {
-        unsigned short *data = &target_port[0];
+        unsigned short *data = &target_port[i];
         if (th_id[i] = pthread_create(&p_thread[i], NULL, thread_func, (void *) data) < 0) {
             printf("Error while creating thread.\n");
             return -1;
@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
             printf("Error in thread. pthread_join() returned %d.\n", err);
             return -1;
         }
-        printf("th_stat[%d]: %d\n", i, th_stat[i]);
+        //printf("th_stat[%d]: %d\n", i, th_stat[i]);
     }
     //*/
 
@@ -105,14 +105,14 @@ int create_connection_thread(void *args) {
     if (connect(client_fd,
                 (struct sockaddr*) &server_addr,
                 sizeof(server_addr)) < 0) {
-        printf("Connection failed.\n");
+        printf("Connection to port %d failed.\n", target_port);
         return -1;
     }
     
     // receive data from server
-    int count, pos, break_flag = 0;
+    int count, break_flag = 0;
     char filename[BUF_LEN];
-    sscanf(filename, "%ud-%ud.txt", target_port, client_fd);
+    sprintf(filename, "%u-%u.txt", target_port, client_fd);
     /*strcat(filename, itoa(target_port));
     strcat(filename, "-");
     strcat(filename, itoa(client_fd));
@@ -120,17 +120,25 @@ int create_connection_thread(void *args) {
     FILE *file = fopen(filename, "a+");
 
     while (1) {
+        // keep reading from server
         if ((count = read(client_fd, buf, BUF_LEN - 1)) == 0) {
             printf("No more characters to read.");
             break;
         }
-        if (pos = strstr(buf, "@@@@@") != NULL) {
-            buf[pos + 4] = '\0';
+
+        // check if "@@@@@" is inside the buffer
+        char *check_ptr;
+        if ((check_ptr = strstr(buf, "@@@@@")) != NULL) {
+            //printf("Termination signal detected.\n");
+            check_ptr += 5;
+            *check_ptr = '\0';
             break_flag = 1;
         }
 
         // write to file
         fprintf(file, "<time>|%d|%s\n", count, buf);
+
+        // exit loop if break flag is set
         if (break_flag) {
             break;
         }

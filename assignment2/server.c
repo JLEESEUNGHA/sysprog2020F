@@ -88,7 +88,7 @@ int create_connection_thread(void *args) {
     target_port = ((unsigned short *) args)[0];
 
     // create socket(s)
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         printf("Server: Can't open stream socket!\n");
         return -1;
     }
@@ -97,8 +97,8 @@ int create_connection_thread(void *args) {
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(target_port);
-    server_addr.sin_addr.s_addr = htonl("127.0.0.1");//INADDR_ANY);    // hard-coded address
-    printf("%s", server_addr.sin_addr.s_addr);
+    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);    // hard-coded address
+    //printf("%s", server_addr.sin_addr.s_addr);
 
     // attempt to create connection(s)
     ///*
@@ -109,21 +109,19 @@ int create_connection_thread(void *args) {
         printf("Binding failed. Code: %d\n", berrc);
         return -1;
     }
+    printf("Binding successful.\n");
     
-    // receive data from server
+    // send data to client
     int count, pos, break_flag = 0;
     char filename[BUF_LEN];
-    sscanf(filename, "%ud-%ud.txt", target_port, server_fd);
-    /*strcat(filename, itoa(target_port));
-    strcat(filename, "-");
-    strcat(filename, itoa(server_fd));
-    strcat(filename, ".txt");*/
+    sprintf(filename, "%u-%u.txt", target_port, server_fd);
     FILE *file = fopen(filename, "a+");
 
     if (listen(server_fd, BUF_LEN) < 0) {
         printf("Error while attemping to listen.\n");
         return 0;
     }
+    printf("Listening on %d...\n", target_port);
 
     ///*
     // listen to client requests
@@ -135,16 +133,18 @@ int create_connection_thread(void *args) {
             printf("Failed to accept connection.\n");
             return 0;
         }
+        printf("Accepted connection.\n");
 
         // read from client
         if ((count = read(server_fd, buf, BUF_LEN - 1)) == 0) {
             printf("No more characters to read.");
-            break;
+            //break;
         }
         
-        for (int i = 0; i < 10; ++i);
-            write(client_fd, "test_msg", BUF_LEN);
-        write(client_fd, "@@@@@", BUF_LEN);
+        printf("Sending client messages...\n");
+        for (int i = 0; i < 10; ++i)
+            write(client_fd, "test_msg", strlen("test_msg"));
+        write(client_fd, "@@@@@", strlen("@@@@@"));
         /*
         if (client_fd % 2 == 0)
             write(client_fd, "test_msg", BUF_LEN);
