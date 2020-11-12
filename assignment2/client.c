@@ -151,6 +151,7 @@ int create_connection_thread(void *args) {
             break_flag = 1;
         }
 
+        // create formatted time string
         static const int FTIME_SIZE = sizeof("HH:MM:SS.MLS");
         struct timespec ts;
         struct tm *timeinfo;
@@ -178,8 +179,11 @@ int create_connection_thread(void *args) {
         printf("Error closing socket.\n");
         return -1;
     }
+
+    // close file
     if (fclose(file)) {
         printf("Error closing file.\n");
+        return -1;
     }
     //free(&server_addr);
     //*/
