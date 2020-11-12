@@ -13,36 +13,49 @@
 #endif
 
 #define BUF_LEN 2048 // max msg size approx. 1500
+#define MAX_PORT_NO 65355
 
 void * test_thread(void *test_data);
 int create_connection_thread(void *);
 
 int main(int argc, char *argv[]) {
-    unsigned short n_port, target_port[10];
-    
+    unsigned short n_port, target_port[10], port_count[MAX_PORT_NO] = {};
 
     // read the number of ports to create
-    if (argv[1] == NULL) {
+    if (argc < 2) {
         printf("Please provide the number of ports to create.\n");
         return 0;
     }
     n_port = atoi(argv[1]);
     //sscanf(argv[1], "%u", &n_port);
+
+    // check port limit
     if (n_port > 10) {
         printf("Maximum of 10 ports allowed.\nSetting the number of ports to 10...\n");
         n_port = 10;
     }
     //printf("Number of ports specified: %d\n", n_port);
 
-    // save port numbers
+    // obtain number of ports
     if (argc < n_port + 2) {
             printf("Insufficient number of ports specified.\n");
             return 0;
     }
+
+    // save and count port numbers
     for (int i = 0; i < n_port; ++i) {
         //printf("Port No.:%s\n", argv[i + 2]);
         target_port[i] = atoi(argv[i + 2]);
         //sscanf(argv[i + 2], "%u", &target_port[i]); <- doing this causes target_port to be interpreted as a char array, causes n_port to be overwritten with a 0.
+        port_count[target_port[i]]++; // an admittedly memory-inefficient way of counting, but it gets the job done. No bounds checking.
+    }
+
+    // check connection limit for each port
+    for (int j = 0; j < MAX_PORT_NO; ++j) {
+        if (port_count[j] > 5) {
+            printf("The maximum number of connections per port is 5.\n");
+            return 0;
+        }
     }
     //printf("%p ; %p\n", &target_port[10], &n_port);
 
@@ -61,6 +74,7 @@ int main(int argc, char *argv[]) {
             return -1;
         }
     }
+
     // wait for threads to finish
     for (int i = 0; i < n_port; ++i) {
         int err;
@@ -78,14 +92,17 @@ int main(int argc, char *argv[]) {
 
 int create_connection_thread(void *args) {
     char buf[BUF_LEN];
-    struct sockaddr_in server_addr, client_addr;
+    struct sockaddr_in server_addr;
     int client_fd;
     unsigned short target_port;
 
+    // check length of args
     if (args == NULL) {
         printf("Port number not specified.\n");
         return -1;
     }
+
+    // obtain target_port
     target_port = ((unsigned short *) args)[0];
 
     // create socket(s)
@@ -95,7 +112,7 @@ int create_connection_thread(void *args) {
     }
 
     // initialise server_addr 
-    memset(&server_addr, 0, sizeof(server_addr));
+    //memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(target_port);
     server_addr.sin_addr.s_addr = inet_addr("192.168.56.101");    // hard-coded address
@@ -126,6 +143,9 @@ int create_connection_thread(void *args) {
             break;
         }
 
+        // stop-gap fix
+        buf[count] = '\0';
+
         // check if "@@@@@" is inside the buffer
         char *check_ptr;
         if ((check_ptr = strstr(buf, "@@@@@")) != NULL) {
@@ -149,6 +169,7 @@ int create_connection_thread(void *args) {
         printf("Error closing file.\n");
         return -1;
     }
+    //free(&server_addr);
     //*/
     return 0;
 }
