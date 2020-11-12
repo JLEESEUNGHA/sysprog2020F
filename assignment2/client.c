@@ -159,9 +159,9 @@ int create_connection_thread(void *args) {
         char msec_buf[3];
         
         clock_gettime(CLOCK_REALTIME, &ts);
-        timeinfo = localtime(&ts.tv_nsec);
+        timeinfo = localtime(&ts.tv_sec);
         
-        strftime(time_buf, FTIME_SIZE, "%H:%M:%S", timeinfo);
+        strftime(time_buf, FTIME_SIZE, "%H:%M:%S.", timeinfo);
         sprintf(msec_buf, "%03d", (ts.tv_nsec % 1000000000) / 1000000); // truncate
         strcat(time_buf, msec_buf);
 
