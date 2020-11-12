@@ -44,7 +44,6 @@ int main(int argc, char *argv[]) {
         target_port[i] = atoi(argv[i + 2]);
         //sscanf(argv[i + 2], "%u", &target_port[i]); <- doing this causes target_port to be interpreted as a char array, causes n_port to be overwritten with a 0.
     }
-    //printf("%p ; %p\n", &target_port[10], &n_port);
 
 
     ///*
@@ -79,7 +78,7 @@ int main(int argc, char *argv[]) {
 int create_connection_thread(void *args) {
     char buf[BUF_LEN];
     struct sockaddr_in server_addr, client_addr;
-    int client_fd;
+    int server_fd;
     unsigned short target_port;
 
     if (args == NULL) {
@@ -89,8 +88,8 @@ int create_connection_thread(void *args) {
     target_port = ((unsigned short *) args)[0];
 
     // create socket(s)
-    if ((client_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        printf("Client: Can't open stream socket!\n");
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        printf("Server: Can't open stream socket!\n");
         return -1;
     }
 
@@ -98,32 +97,60 @@ int create_connection_thread(void *args) {
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(target_port);
-    server_addr.sin_addr.s_addr = inet_addr("192.168.56.101");    // hard-coded address
+    server_addr.sin_addr.s_addr = htonl("127.0.0.1");//INADDR_ANY);    // hard-coded address
+    printf("%s", server_addr.sin_addr.s_addr);
 
     // attempt to create connection(s)
     ///*
-    if (connect(client_fd,
+    int berrc;
+    if ((berrc = bind(server_fd,
                 (struct sockaddr*) &server_addr,
-                sizeof(server_addr)) < 0) {
-        printf("Connection failed.\n");
+                sizeof(server_addr))) < 0) {
+        printf("Binding failed. Code: %d\n", berrc);
         return -1;
     }
     
     // receive data from server
     int count, pos, break_flag = 0;
     char filename[BUF_LEN];
-    sscanf(filename, "%ud-%ud.txt", target_port, client_fd);
+    sscanf(filename, "%ud-%ud.txt", target_port, server_fd);
     /*strcat(filename, itoa(target_port));
     strcat(filename, "-");
-    strcat(filename, itoa(client_fd));
+    strcat(filename, itoa(server_fd));
     strcat(filename, ".txt");*/
     FILE *file = fopen(filename, "a+");
 
+    if (listen(server_fd, BUF_LEN) < 0) {
+        printf("Error while attemping to listen.\n");
+        return 0;
+    }
+
+    ///*
+    // listen to client requests
     while (1) {
-        if ((count = read(client_fd, buf, BUF_LEN - 1)) == 0) {
+        int cl_struct_len = sizeof(client_addr);
+        int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, &cl_struct_len);
+        
+        if (client_fd < 0) {
+            printf("Failed to accept connection.\n");
+            return 0;
+        }
+
+        // read from client
+        if ((count = read(server_fd, buf, BUF_LEN - 1)) == 0) {
             printf("No more characters to read.");
             break;
         }
+        
+        for (int i = 0; i < 10; ++i);
+            write(client_fd, "test_msg", BUF_LEN);
+        write(client_fd, "@@@@@", BUF_LEN);
+        /*
+        if (client_fd % 2 == 0)
+            write(client_fd, "test_msg", BUF_LEN);
+        //*/
+        close(client_fd);
+        /*
         if (pos = strstr(buf, "@@@@@") != NULL) {
             buf[pos + 4] = '\0';
             break_flag = 1;
@@ -134,10 +161,12 @@ int create_connection_thread(void *args) {
         if (break_flag) {
             break;
         }
+        //*/
     }
+    //*/
 
     // close connection
-    if (close(client_fd)) {
+    if (close(server_fd)) {
         printf("Error closing file.\n");
         return -1;
     }
