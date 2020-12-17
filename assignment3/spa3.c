@@ -25,7 +25,7 @@
 #define PROXY 		3
 
 
-static struct nf_hook_ops spa3_hook_ops;
+static struct nf_hook_ops spa3_hook_pre;
 static struct nf_hook_ops spa3_hook_forward;
 static struct nf_hook_ops spa3_hook_post;
 
@@ -261,10 +261,10 @@ static const struct file_operations proc_ops_del = {
 static int __init spa3_proc_init(void) {
 
     // register hooks
-    spa3_hook_ops.hook 		= spa3_hook;
-    spa3_hook_ops.hooknum	= NF_INET_PRE_ROUTING;
-    spa3_hook_ops.pf		= PF_INET;
-    nf_register_hook(&spa3_hook_ops);
+    spa3_hook_pre.hook 		= spa3_hpre;
+    spa3_hook_pre.hooknum	= NF_INET_PRE_ROUTING;
+    spa3_hook_pre.pf		= PF_INET;
+    nf_register_hook(&spa3_hook_pre);
 
     spa3_hook_forward.hook 	= spa3_hforward;
     spa3_hook_forward.hooknum	= NF_INET_FORWARD;
@@ -289,7 +289,7 @@ static int __init spa3_proc_init(void) {
 }
 
 static void  __exit spa3_proc_exit(void) {
-    nf_unregister_hook(&spa3_hook_ops);
+    nf_unregister_hook(&spa3_hook_pre);
     nf_unregister_hook(&spa3_hook_forward);
     nf_unregister_hook(&spa3_hook_post);
 
