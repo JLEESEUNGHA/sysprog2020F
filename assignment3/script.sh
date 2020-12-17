@@ -1,8 +1,13 @@
+# uncomment if initialising repo from github:
+# cd ~
+# git clone https://github.com/JLEESEUNGHA/sysprog2020F
+
+
 # set ip_forward
 sudo sysctl -w net.ipv4.ip_forward=1
 
 # change directory to the right folder (if necessary)
-#cd ~/spa1/assignment3
+cd ~/sysprog2020F/sysprog2020F/assignment3
 
 # remove old files
 rm spa3.mod.*
