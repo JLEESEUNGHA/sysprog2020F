@@ -10,7 +10,6 @@
 #include <linux/ip.h>
 #include <linux/tcp.h>
 
-
 // change as appropriate
 #define SERVER_IP_ADDR 0xc0a83865 //192.168.56.101 //doesn't work, ref to output to fix
 #define CLIENT_IP_ADDR 0x0a00020f //10.0.2.15  //doesn't work, ref to output to fix
@@ -28,12 +27,14 @@
 #define ACCEPT		7
 
 
+// define nf_hook_ops
 static struct nf_hook_ops spa3_hook_pre;
 static struct nf_hook_ops spa3_hook_forward;
 static struct nf_hook_ops spa3_hook_post;
 
-static int rule_list[4][MAX_RULE_LIST_LEN]; //0: Inbound, 1: Outbound, 2: Forward, 3: Proxy
-static int rule_list_len[4] = {0};
+// define some global variables
+static int rule_list[MAX_RULE_LIST_LEN][2]; //[0]:port, [1]:type
+static int rule_list_len = 0;
 const char* op_msg[8] = {
 	"INBOUND",
 	"OUTBOUND",
@@ -45,7 +46,7 @@ const char* op_msg[8] = {
 	"ACCEPT"
 };
  
-// function to check whether a packet should be dropped
+// define function to check whether a packet should be dropped
 int is_drop(int op_id) {
     if (op_id == DROP_INBOUND || op_id == DROP_FORWARD || op_id == DROP_OUTBOUND) {
         return 1;
@@ -61,7 +62,7 @@ int in_rule_list(int type, unsigned int portno) {
         return 1;
     else if (type == OUTBOUND && portno == TEST_PORT + 1111)
         return 1;
-    else if (type == FORWARD && portno == TEST_PORT + 2222)
+    else if (type == FORWARD && portno == TEST_PORT + 3333)
         return 1;
     else if (type == PROXY && portno == TEST_PORT + 3333)
         return 1;
@@ -69,19 +70,9 @@ int in_rule_list(int type, unsigned int portno) {
 }
 
 
-    /* we need to implement rules for:
-     * Inbound: e.g. src is 1111, dest is <whatever> (below).
-     * Outbound: e.g. src is <whatever>, dest is 1111.
-     * Forward:
-     * Proxy:
-     * NF_INET_PRE_ROUTING, NF_INET_FORWARD, NF_INET_POST_ROUTING etc.
-     * Proxy: change inbound packet's dest. addr. to 131.1.1.1; new dest. port -> src port no (1111)
-     */
-
-
 /* define hook functions */
 int __spa3_hook(struct sk_buff *skb, int type) {
-    const unsigned int redirect_addr = 0x83010101; //131.1.1.1
+    const unsigned int redirect_addr = 0x01010183; //131.1.1.1
     struct iphdr* ip_header = ip_hdr(skb);
     unsigned int protocol = ip_header->protocol;
     unsigned int saddr = ip_header->saddr;
@@ -91,7 +82,7 @@ int __spa3_hook(struct sk_buff *skb, int type) {
     //printk("spa3_hook: protocol: %d, saddr: %u, daddr: %u\n", ip_header->protocol, ip_header->saddr, ip_header->daddr); //sanity check.
 
     // assume all relevant packets are TCP packets.
-    if (ip_header->protocol == IPPROTO_TCP) {
+    if (1) {//ip_header->protocol == IPPROTO_TCP) {
 
         // extract TCP header
         struct tcphdr* tcp_header = (struct tcphdr*)((char*)ip_header + sizeof(struct iphdr));
@@ -114,23 +105,24 @@ int __spa3_hook(struct sk_buff *skb, int type) {
                 if (in_rule_list(PROXY, src_portno)) {
                     op_id = PROXY;
                     ip_header->daddr = redirect_addr;
+                    daddr = ip_header->daddr;
                 }
-            break;
+                break;
             case FORWARD:
-                op_id = in_rule_list(FORWARD, src_portno) == 1 ? DROP_FORWARD : FORWARD;
-            break;
+                op_id = in_rule_list(FORWARD, dest_portno) == 1 ? DROP_FORWARD : FORWARD;
+                break;
             case OUTBOUND:
-                op_id = in_rule_list(OUTBOUND, src_portno) == 1 ? DROP_OUTBOUND : OUTBOUND;
-            break;
+                op_id = in_rule_list(OUTBOUND, dest_portno) == 1 ? DROP_OUTBOUND : OUTBOUND;
+                break;
         }
 
-        printk("%15s: %d, %d, %d, %d, %d, %d%d%d%d\n",
+        printk("%15s: %d, %d, %d, %d.%d.%d.%d, %d.%d.%d.%d, %d%d%d%d\n",
 		op_msg[op_id],
 		protocol,
 		src_portno,
 		dest_portno,
-		saddr,
-		daddr,
+		saddr & 0xff, (saddr >> 8) & 0xff, (saddr >> 16) & 0xff, (saddr >> 24) & 0xff,
+		daddr & 0xff, (daddr >> 8) & 0xff, (daddr >> 16) & 0xff, (daddr >> 24) & 0xff,
 		syn_bit, fin_bit, ack_bit, rst_bit); // TODO: format ip addresses.
 
     }
@@ -139,7 +131,6 @@ int __spa3_hook(struct sk_buff *skb, int type) {
     if (is_drop(op_id))
         return NF_DROP;
     return NF_ACCEPT;
-
 }
 
 
@@ -148,61 +139,8 @@ static unsigned int spa3_hpre(unsigned int no,
 				const struct net_device *in,
 				const struct net_device *out,
 				int (*okfn)(struct sk_buff *)) {
+    /* pre */
     return __spa3_hook(skb, INBOUND);
-/*
-    const unsigned int redirect_addr = 0x83010101; //131.1.1.1
-    struct iphdr* ip_header = ip_hdr(skb);
-    unsigned int protocol = ip_header->protocol;
-    unsigned int saddr = ip_header->saddr;
-    unsigned int daddr = ip_header->daddr;
-    int op_id = 7; //default: generic accept
-
-    //printk("spa3_hpre: protocol: %d, saddr: %u, daddr: %u\n", ip_header->protocol, ip_header->saddr, ip_header->daddr); //sanity check.
-
-    // assume all relevant packets are TCP packets.
-    if (ip_header->protocol == IPPROTO_TCP) {
-
-        // extract TCP header
-        struct tcphdr* tcp_header = (struct tcphdr*)((char*)ip_header + sizeof(struct iphdr));
-
-        // obtain the source and destination port numbers
-        unsigned int src_portno = htons(tcp_header->source);
-        unsigned int dest_portno = htons(tcp_header->dest);
-
-        // extract relevant bits
-        unsigned int syn_bit, fin_bit, ack_bit, rst_bit;
-        syn_bit = tcp_header->syn;
-        fin_bit = tcp_header->fin;
-        ack_bit = tcp_header->ack;
-        rst_bit = tcp_header->rst;
-
-        // check if action should be taken on the packet (INBOUND, PROXY)
-        if (in_rule_list(INBOUND, src_portno)) {
-            op_id = DROP_INBOUND;
-        } else {
-            op_id = INBOUND;
-        }
-        if (in_rule_list(PROXY, src_portno)) {
-            op_id = PROXY;
-            ip_header->daddr = redirect_addr; //change destination ip address.
-        }
-
-        printk("%30s: %d, %d, %d, %d, %d, %d%d%d%d\n",
-		op_msg[op_id],
-		protocol,
-		src_portno,
-		dest_portno,
-		saddr,
-		daddr,
-		syn_bit, fin_bit, ack_bit, rst_bit); // TODO: format ip addresses.
-
-    }
-
-    // check whether to drop packet
-    if (is_drop(op_id))
-        return NF_DROP;
-    return NF_ACCEPT;
-*/
 }
 
 
@@ -212,6 +150,7 @@ static unsigned int spa3_hforward(unsigned int no,
 				const struct net_device *out,
 				int (*okfn)(struct sk_buff *)) {
     /* forward */
+    printk("spa3: spa3_hforward called.\n");
     return __spa3_hook(skb, FORWARD);
 }
 
@@ -235,7 +174,7 @@ static struct proc_dir_entry *proc_file_del;
 
 /* define proc file operations */
 static int spa3_open(struct inode *inode, struct file *file) {
-    printk(KERN_INFO "Opening spa3...\n");
+    printk(KERN_INFO "spa3: Opening file...\n");
     return 0;
 }
 
@@ -245,17 +184,40 @@ static ssize_t spa3_add_write(struct file *file,
                          loff_t *ppos) {
 
     /* REPLACE WITH USER I/O TO SET FIREWALL RULES */
-    /* currently does next to nothing since we're not adding new rules */
 
+    char buf[7];
+    count = copy_from_user(buf, user_buffer, 7);
+    buf[count] = '\0';
+    printk("spa3: nRules: %d, buf:%s, buf[n]:%c %d %d %d\n", rule_list_len, buf, buf[0], buf[1], buf[2], buf[3]);
 
-    char buf[6];
-    copy_from_user(buf, user_buffer, 5);
-    buf[5] = '\0';
-    if (strcmp("clear", buf) == 0) {
-        printk(KERN_INFO "Clearing rules list...\n");
-        rule_list_len[0] = 0;
-    } else {
-        printk(KERN_INFO "Input \"clear\" to reset the list.\n");
+    switch (user_buffer[0]) {
+        case 'I':
+            kstrtol((user_buffer+1), 10, rule_list[rule_list_len][0]);
+            rule_list[rule_list_len++][1] = INBOUND;
+
+            printk(KERN_INFO "spa3: Inbound rule added\n");
+            break;
+        case 'O':
+            kstrtol((user_buffer+1), 10, rule_list[rule_list_len][0]);
+            rule_list[rule_list_len++][1] = OUTBOUND;
+
+            printk(KERN_INFO "spa3: Outbound rule added.\n");
+            break;
+        case 'F':
+            kstrtol((user_buffer+1), 10, rule_list[rule_list_len][0]);
+            rule_list[rule_list_len++][1] = FORWARD;
+
+            printk(KERN_INFO "spa3: Forwarding rule added.\n");
+            break;
+        case 'P':
+            kstrtol((user_buffer+1), 10, rule_list[rule_list_len][0]);
+            rule_list[rule_list_len++][1] = PROXY;
+
+            printk(KERN_INFO "spa3: Proxy rule added.\n");
+
+            break;
+        default:
+            printk(KERN_INFO "spa3: Input invalid.\n");
     }
 
     return count;
@@ -274,20 +236,35 @@ static ssize_t spa3_show_read(struct file *file,
     static unsigned int finished = 1;
     int len_message = 0;
 
-    // check if the queue has been fully read.
+    // check if the list has been fully read.
     if (finished) {
         curr_pos = 0;
         finished = 0;
     }
 
-    if (curr_pos < rule_list_len[0]) {
+    if (curr_pos < rule_list_len) {
         char message[MAX_MSG_LEN];
-        int rule = rule_list[curr_pos];
+        int portno = rule_list[curr_pos][0];
+        char type_char;
+        switch (rule_list[curr_pos][1]) {
+            case 0:
+                type_char = 'I';
+                break;
+            case 1:
+                type_char = 'O';
+                break;
+            case 2:
+                type_char = 'F';
+                break;
+            case 3:
+                type_char = 'P';
+                break;
+        }
+        printk("curr_pos: %d, type_char: %c, portno: %d\n", curr_pos, type_char, portno);
 	curr_pos = (curr_pos + 1) % MAX_RULE_LIST_LEN;
 
         // generate message string
-        len_message = sprintf(message, "RULE: block inbound to port: %d", rule);
-        /* TODO: support more things */
+        len_message = sprintf(message, "spa3: rule index %d: (%c) %d\n", curr_pos, type_char, portno);
 
         // copy string to user buffer
         if (len_message > len) {
@@ -303,7 +280,7 @@ static ssize_t spa3_show_read(struct file *file,
     } else {
 	curr_pos = 0;
         finished = 1;
-        printk(KERN_INFO "Finished reading spa3.\n");
+        printk(KERN_INFO "spa3: Finished reading rules.\n");
     }
      
     return len_message;
@@ -358,12 +335,12 @@ static int __init spa3_proc_init(void) {
 
 
     // create /proc directories and files
-    proc_dir = proc_mkdir("2018320250", NULL);
+    proc_dir = proc_mkdir("group32", NULL);
     proc_file_add = proc_create("add", 0600, proc_dir, &proc_ops_add);
     proc_file_show = proc_create("show", 0600, proc_dir, &proc_ops_show);
     proc_file_del = proc_create("del", 0600, proc_dir, &proc_ops_del);
 
-    printk(KERN_INFO "spa3 init successful.\n");
+    printk(KERN_INFO "spa3: init successful.\n");
 
     return 0;
 }
@@ -373,7 +350,7 @@ static void  __exit spa3_proc_exit(void) {
     nf_unregister_hook(&spa3_hook_forward);
     nf_unregister_hook(&spa3_hook_post);
 
-    printk(KERN_INFO "Exiting spa3...\n");
+    printk(KERN_INFO "spa3: Exiting...\n");
     return;
 }
 
