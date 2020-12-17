@@ -57,6 +57,7 @@ int is_drop(int op_id) {
 
 
 /* define rule list check function STUB */
+/*
 int in_rule_list(int type, unsigned int portno) {
     if (type == INBOUND && portno == TEST_PORT)
         return 1;
@@ -68,6 +69,17 @@ int in_rule_list(int type, unsigned int portno) {
         return 1;
     return 0;
 }
+*/
+///*
+int in_rule_list(int type, unsigned int portno) {
+    int i = 0;
+    for (; i < rule_list_len; ++i) {
+        if (rule_list[i][0] == portno && rule_list[i][1] == type)
+            return 1;
+    }
+    return 0;
+}
+//*/
 
 
 /* define hook functions */
@@ -201,27 +213,33 @@ static ssize_t spa3_add_write(struct file *file,
     buf[7] = '\0';
     printk("spa3: nRules: %d, buf:%s, buf[n]:%c %d %d %d\n", rule_list_len, buf, buf[0], buf[1], buf[2], buf[3]);
 
+    long int tmp;
     switch (user_buffer[0]) {
         case 'I':
-            kstrtol((user_buffer+1), 10, rule_list[rule_list_len][0]);
+            kstrtol((buf+2), 10, &tmp);
+            rule_list[rule_list_len][0] = (int) tmp;
             rule_list[rule_list_len++][1] = INBOUND;
 
             printk(KERN_INFO "spa3: Inbound rule added\n");
             break;
         case 'O':
-            kstrtol((user_buffer+1), 10, rule_list[rule_list_len][0]);
+            kstrtol((buf+2), 10, &tmp);
+            rule_list[rule_list_len][0] = (int) tmp;
             rule_list[rule_list_len++][1] = OUTBOUND;
 
             printk(KERN_INFO "spa3: Outbound rule added.\n");
             break;
         case 'F':
-            kstrtol((user_buffer+1), 10, rule_list[rule_list_len][0]);
+
+            kstrtol((buf+2), 10, &tmp);
+            rule_list[rule_list_len][0] = (int) tmp;
             rule_list[rule_list_len++][1] = FORWARD;
 
             printk(KERN_INFO "spa3: Forwarding rule added.\n");
             break;
         case 'P':
-            kstrtol((user_buffer+1), 10, rule_list[rule_list_len][0]);
+            kstrtol((buf+2), 10, &tmp);
+            rule_list[rule_list_len][0] = (int) tmp;
             rule_list[rule_list_len++][1] = PROXY;
 
             printk(KERN_INFO "spa3: Proxy rule added.\n");
