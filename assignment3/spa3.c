@@ -200,8 +200,6 @@ static ssize_t spa3_add_write(struct file *file,
                          size_t count,
                          loff_t *ppos) {
 
-    /* REPLACE WITH USER I/O TO SET FIREWALL RULES */
-
     char buf[8];
     int failed_count = copy_from_user(buf, user_buffer, 7);
     if (failed_count) {
@@ -316,8 +314,36 @@ static ssize_t spa3_show_read(struct file *file,
 
 static ssize_t spa3_del_write(struct file *file,
                         char __user *user_buffer,
-                        size_t len,
+                        size_t count,
                         loff_t *offset) {
+
+    char buf[2];
+    int failed_count = copy_from_user(buf, user_buffer, 1);
+    if (failed_count) {
+        printk("spa3: Error while reading from user input.");
+        count = 0;
+        return -1;
+    }
+    buf[1] = '\0';
+    printk("spa3: nRules: %d, buf:%s,", rule_list_len, buf);
+
+    long int index_long;
+    kstrtol(buf, 10, &index_long);
+    int index = (int) index_long;
+
+    if (rule_list_len > index) {
+        // move up all entries after the delete entry
+        int i = index;
+        for (; i < rule_list_len; ++i) {
+            rule_list[i][0] = rule_list[i + 1][0];
+            rule_list[i][1] = rule_list[i + 1][1];
+        }
+        rule_list_len--;
+    } else { 
+        printk(KERN_INFO "spa3: Input invalid.\n");
+    }
+
+    count = 1;
     return 1;
 }
  
