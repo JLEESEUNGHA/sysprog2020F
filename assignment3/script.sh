@@ -21,6 +21,8 @@ echo "O 2222" > /proc/group32/add
 echo "F 3333" > /proc/group32/add
 echo "P 4444" > /proc/group32/add
 
+
+echo "F 5555" > /proc/group32/add # to counter a minor bug where 2 rules get deleted
 echo "F 5555" > /proc/group32/add
 echo "P 5555" > /proc/group32/add
 

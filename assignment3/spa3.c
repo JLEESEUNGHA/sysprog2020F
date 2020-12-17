@@ -127,7 +127,7 @@ int __spa3_hook(struct sk_buff *skb, int type) {
                 }
                 break;
             case FORWARD:
-                op_id = in_rule_list(FORWARD, dest_portno) == 1 ? DROP_FORWARD : FORWARD;
+                op_id = in_rule_list(FORWARD, src_portno) == 1 ? DROP_FORWARD : FORWARD;
                 break;
             case OUTBOUND:
                 op_id = in_rule_list(OUTBOUND, dest_portno) == 1 ? DROP_OUTBOUND : OUTBOUND;
