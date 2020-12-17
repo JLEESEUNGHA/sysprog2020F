@@ -25,10 +25,8 @@ echo "I 1111" > /proc/group32/add
 echo "O 2222" > /proc/group32/add
 echo "F 3333" > /proc/group32/add
 echo "P 4444" > /proc/group32/add
-
-
-echo "F 5555" > /proc/group32/add # to counter a minor bug where 2 rules get deleted
 echo "F 5555" > /proc/group32/add
+echo "P 5555" > /proc/group32/add 
 echo "P 5555" > /proc/group32/add
 
 echo "firewall rules initialised.\n"
@@ -40,7 +38,7 @@ echo "firewall rules shown.\n"
 
 # delete a firewall rule
 sudo chmod 777 /proc/group32/del
-echo "3" > /proc/group32/del
+echo "6" > /proc/group32/del
 
 echo "firewall rule deleted.\n"
 
