@@ -53,24 +53,7 @@ int is_drop(int op_id) {
     }
 }
 
-
-/* define rule list check function STUB */
-/*
-int in_rule_list(int type, unsigned int portno) {
-    if (type == INBOUND && portno == TEST_PORT)
-        return 1;
-    else if (type == OUTBOUND && portno == TEST_PORT + 1111)
-        return 1;
-    else if (type == FORWARD && portno == TEST_PORT + 3333)
-        return 1;
-    else if (type == PROXY && portno == TEST_PORT + 3333)
-        return 1;
-    return 0;
-}
-*/
-
 /* define rule list check function */
-///*
 int in_rule_list(int type, unsigned int portno) {
     int i = 0;
     for (; i < rule_list_len; ++i) {
@@ -79,7 +62,6 @@ int in_rule_list(int type, unsigned int portno) {
     }
     return 0;
 }
-//*/
 
 
 /* define hook functions */
@@ -141,7 +123,7 @@ int __spa3_hook(struct sk_buff *skb, int type) {
 		dest_portno,
 		saddr & 0xff, (saddr >> 8) & 0xff, (saddr >> 16) & 0xff, (saddr >> 24) & 0xff,
 		daddr & 0xff, (daddr >> 8) & 0xff, (daddr >> 16) & 0xff, (daddr >> 24) & 0xff,
-		syn_bit, fin_bit, ack_bit, rst_bit); // TODO: format ip addresses.
+		syn_bit, fin_bit, ack_bit, rst_bit);
 
     }
 
@@ -253,9 +235,6 @@ static ssize_t spa3_show_read(struct file *file,
                         char __user *user_buffer,
                         size_t len,
                         loff_t *offset) {
-
-    /* REPLACE WITH USER I/O TO GET FIREWALL RULES */
-    /* currently just reads the rule_list, which is always empty */
     
     // loop until the end of the list is reached.
     static unsigned int curr_pos = 0;
@@ -332,7 +311,7 @@ static ssize_t spa3_del_write(struct file *file,
     int index = (int) index_long;
 
     if (rule_list_len > index) {
-        // move up all entries after the delete entry
+        // move up all entries after the deleted entry
         int i = index;
         for (; i < rule_list_len; ++i) {
             rule_list[i][0] = rule_list[i + 1][0];
