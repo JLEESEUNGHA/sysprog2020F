@@ -168,7 +168,6 @@ static unsigned int spa3_hforward(unsigned int no,
 				const struct net_device *out,
 				int (*okfn)(struct sk_buff *)) {
     /* forward */
-    printk("spa3: spa3_hforward called.\n");
     return __spa3_hook(skb, FORWARD);
 }
 
