@@ -6,42 +6,82 @@
 #include <asm/uaccess.h>
 
 #include <linux/skbuff.h>
-#include <linux/netdevice.>
+#include <linux/netfilter.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
+//#include <linux/udp.h>
+
+
+// change as appropriate
+#define SERVER_IP_ADDR 0xc0a83865 //192.168.56.101 //doesn't work, ref to output
+#define CLIENT_IP_ADDR 0x0a00020f //10.0.2.15  //doesn't work, ref to output
+#define MAX_DROP_LIST_LEN 1000
+#define MAX_MSG_LEN 1000
+
 
 static struct nf_hook_ops spa3_hook_ops;
+static int* drop_list[MAX_DROP_LIST_LEN];
+static int drop_list_len = 0;
 
-/* define drop function STUB */
-int in_drop_list(int ip, int portno) {
-	return 1;
+/* define drop list check function STUB */
+int in_drop_list(unsigned int portno) {
+    if (portno == 1111)
+        return 1;
+    return 0;
 }
 
 
 /* define hook function */
 static unsigned int spa3_hook(unsigned int no,
 				struct sk_buff *skb,
-				const struct netdev_in,
-				const struct netdev_out,
-				int (*okfn)(struct sk_buff)) {
-	
-	if (!skb)
-		return NF_ACCEPT;
-	else {
-		ip_header = (struct iphdr*) skb_network_header(skb);
-		if (!ip_header)
-			return NF_ACCEPT;
-		else {
-			if (ip_header->protocol == TCP) {
-				if (in_drop_list(0, 0)) { //put in ip_addr and tcp portno
-					return NF_DROP;
-				}
-				else {
-					return NF_ACCEPT;
-				}
-			}
-		}
-	}
+				const struct net_device *in,
+				const struct net_device  *out,
+				int (*okfn)(struct sk_buff *)) {
+
+    struct iphdr* ip_header = ip_hdr(skb);
+    unsigned int protocol = ip_header->protocol;
+    unsigned int saddr = ip_header->saddr;
+    unsigned int daddr = ip_header->daddr;
+
+    struct tcphdr* tcp_header = (struct tcphdr*)((char*)ip_header + sizeof(struct iphdr));
+
+
+    /* we need to implement rules for:
+     * Inbound: e.g. src is 1111, dest is <whatever> (below).
+     * Outbound: e.g. src is <whatever>, dest is 1111.
+     * Forward:
+     * Proxy:
+     * NF_INET_PRE_ROUTING, NF_INET_FORWARD, NF_INET_POST_ROUTING etc.
+     * Proxy: change inbound packet's dest. addr. to 131.1.1.1; new dest. port -> src port no (1111)
+     */
+
+
+    // ignore the next two statements for now
+    //if (ip_header->saddr != SERVER_IP_ADDR || ip_header->daddr != CLIENT_IP_ADDR)
+    //    return NF_ACCEPT;
+    
+    printk("spa: protocol: %d, saddr: %u, daddr: %u\n", ip_header->protocol, ip_header->saddr, ip_header->daddr);
+    if (ip_header->protocol == IPPROTO_TCP) {
+
+        // check if src_portno is in the drop list
+        unsigned int src_portno = htons(tcp_header->source);
+        unsigned int dest_portno = htons(tcp_header->dest);
+        printk("spa3: src_portno: %u, dest_portno: %u\n", src_portno, dest_portno); 
+
+        if (in_drop_list(src_portno)) {
+            printk("spa3: drop cuz src_portno is %d.", src_portno);
+            return NF_DROP;
+        }
+
+        // if not in drop list
+        printk("spa3: inbound %d\n", src_portno);
+
+        // TODO: handle Inbound, Outbound, Forward, Proxy etc.
+    }
+
+    // accept if not TCP
+    printk("spa3: protocol not TCP.");
+    return NF_ACCEPT;
 }
 
 /* define proc files */
@@ -61,26 +101,27 @@ static ssize_t spa3_read(struct file *file,
                         loff_t *offset) {
 
     /* REPLACE WITH USER I/O TO GET FIREWALL RULES */
+    /* currently just reads the drop_list, which is always empty */
     
-    // loop until the end of the queue is reached.
-    static unsigned int curr_bbq_pos = 0;
+    // loop until the end of the list is reached.
+    static unsigned int curr_pos = 0;
     static unsigned int finished = 1;
     int len_message = 0;
 
     // check if the queue has been fully read.
     if (finished) {
-        curr_bbq_pos = g_bbq.head;
+        curr_pos = 0;
         finished = 0;
     }
 
-    if (curr_bbq_pos != g_bbq.next_pos) {
-        char message[MAX_BBQ_MSG_LEN];
-        BB blob = g_bbq.queue[curr_bbq_pos];
-	curr_bbq_pos = (curr_bbq_pos + 1) % MAX_BBQ_LEN;
+    if (curr_pos < drop_list_len) {
+        char message[MAX_MSG_LEN];
+        int rule = drop_list[curr_pos];
+	curr_pos = (curr_pos + 1) % MAX_DROP_LIST_LEN;
 
         // generate message string
-        len_message = sprintf(message, "sector_addr: %d | device_name: %s | time: %u\n" ,
-                        blob.sector_addr, blob.device_name, blob.time);
+        len_message = sprintf(message, "RULE: block inbound to port: %d", rule);
+        /* TODO: support more things */
 
         // copy string to user buffer
         if (len_message > len) {
@@ -94,7 +135,7 @@ static ssize_t spa3_read(struct file *file,
         }
 
     } else {
-	curr_bbq_pos = g_bbq.head;
+	curr_pos = 0;
         finished = 1;
         printk(KERN_INFO "Finished reading spa3.\n");
     }
@@ -108,19 +149,17 @@ static ssize_t spa3_write(struct file *file,
                          loff_t *ppos) {
 
     /* REPLACE WITH USER I/O TO SET FIREWALL RULES */
-
+    /* currently does next to nothing since we're not adding new rules */
 
 
     char buf[6];
     copy_from_user(buf, user_buffer, 5);
     buf[5] = '\0';
     if (strcmp("clear", buf) == 0) {
-        printk(KERN_INFO "Clearing BBQ...\n");
-        // the data inside the queue is left untouched.
-        g_bbq.head = 0;
-        g_bbq.next_pos = 0;
+        printk(KERN_INFO "Clearing rules list...\n");
+        drop_list_len = 0;
     } else {
-        printk(KERN_INFO "Input \"clear\" into BBQ to reset the queue.\n");
+        printk(KERN_INFO "Input \"clear\" to reset the list.\n");
     }
 
     return count;
@@ -140,10 +179,10 @@ static const struct file_operations proc_ops = {
 /* define module initiation and exit sequences*/
 static int __init spa3_proc_init(void) {
 
-	spa3_hook_ops.hook 	= spa3_hook;
-	spa3_hook_ops.hooknum	= 1;
-	spae_hook_ops.pf	= PF_INET;
-	nf_register_hook(&spa3_hook_ops);
+    spa3_hook_ops.hook 		= spa3_hook;
+    spa3_hook_ops.hooknum	= 1;
+    spa3_hook_ops.pf		= PF_INET;
+    nf_register_hook(&spa3_hook_ops);
 
 
     proc_dir = proc_mkdir("spa3", NULL);
