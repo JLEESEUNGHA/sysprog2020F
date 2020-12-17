@@ -9,7 +9,6 @@
 #include <linux/netfilter.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
-//#include <linux/udp.h>
 
 
 // change as appropriate
@@ -17,12 +16,16 @@
 #define CLIENT_IP_ADDR 0x0a00020f //10.0.2.15  //doesn't work, ref to output to fix
 #define MAX_RULE_LIST_LEN 1000
 #define MAX_MSG_LEN 1000
-#define TEST_PORT 3333
+#define TEST_PORT 1111
 
 #define INBOUND		0
 #define OUTBOUND	1
 #define FORWARD		2
 #define PROXY 		3
+#define DROP_INBOUND	4 
+#define DROP_OUTBOUND	5
+#define DROP_FORWARD	6
+#define ACCEPT		7
 
 
 static struct nf_hook_ops spa3_hook_pre;
@@ -32,16 +35,25 @@ static struct nf_hook_ops spa3_hook_post;
 static int rule_list[4][MAX_RULE_LIST_LEN]; //0: Inbound, 1: Outbound, 2: Forward, 3: Proxy
 static int rule_list_len[4] = {0};
 const char* op_msg[8] = {
-	"DROP(INBOUND)",
-	"DROP(OUTBOUND)",
-	"DROP(FORWARD)",
 	"INBOUND",
 	"OUTBOUND",
 	"FORWARD",
 	"PROXY(INBOUND)",
+	"DROP(INBOUND)",
+	"DROP(OUTBOUND)",
+	"DROP(FORWARD)",
 	"ACCEPT"
 };
  
+// function to check whether a packet should be dropped
+int is_drop(int op_id) {
+    if (op_id == DROP_INBOUND || op_id == DROP_FORWARD || op_id == DROP_OUTBOUND) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
 
 /* define rule list check function STUB */
 int in_rule_list(int type, unsigned int portno) {
@@ -68,58 +80,129 @@ int in_rule_list(int type, unsigned int portno) {
 
 
 /* define hook functions */
-static unsigned int spa3_hook(unsigned int no,
-				struct sk_buff *skb,
-				const struct net_device *in,
-				const struct net_device *out,
-				int (*okfn)(struct sk_buff *)) {
-
+int __spa3_hook(struct sk_buff *skb, int type) {
     const unsigned int redirect_addr = 0x83010101; //131.1.1.1
     struct iphdr* ip_header = ip_hdr(skb);
     unsigned int protocol = ip_header->protocol;
     unsigned int saddr = ip_header->saddr;
     unsigned int daddr = ip_header->daddr;
-
-    struct tcphdr* tcp_header = (struct tcphdr*)((char*)ip_header + sizeof(struct iphdr)); // assume it's a TCP header.
     int op_id = 7; //default: generic accept
 
-    printk("spa: protocol: %d, saddr: %u, daddr: %u\n", ip_header->protocol, ip_header->saddr, ip_header->daddr); //sanity check.
+    //printk("spa3_hook: protocol: %d, saddr: %u, daddr: %u\n", ip_header->protocol, ip_header->saddr, ip_header->daddr); //sanity check.
 
     // assume all relevant packets are TCP packets.
     if (ip_header->protocol == IPPROTO_TCP) {
+
+        // extract TCP header
+        struct tcphdr* tcp_header = (struct tcphdr*)((char*)ip_header + sizeof(struct iphdr));
 
         // obtain the source and destination port numbers
         unsigned int src_portno = htons(tcp_header->source);
         unsigned int dest_portno = htons(tcp_header->dest);
 
-        // check if action should be taken on the packet (INBOUND, PROXY)
-        if (in_rule_list(INBOUND, src_portno)) {
-            op_id = 0;
-        } else {
-            op_id = 3;
-        }
-        if (in_rule_list(PROXY, src_portno)) {
-            op_id= = 7;
-            ip_header->daddr = redirect_addr; //change destination ip address.
+        // extract relevant bits
+        unsigned int syn_bit, fin_bit, ack_bit, rst_bit;
+        syn_bit = tcp_header->syn;
+        fin_bit = tcp_header->fin;
+        ack_bit = tcp_header->ack;
+        rst_bit = tcp_header->rst;
+
+        // check what kind of action should be taken on the packet
+        switch (type) {
+            case INBOUND:
+                op_id = in_rule_list(INBOUND, src_portno) == 1 ? DROP_INBOUND : INBOUND;
+                if (in_rule_list(PROXY, src_portno)) {
+                    op_id = PROXY;
+                    ip_header->daddr = redirect_addr;
+                }
+            break;
+            case FORWARD:
+                op_id = in_rule_list(FORWARD, src_portno) == 1 ? DROP_FORWARD : FORWARD;
+            break;
+            case OUTBOUND:
+                op_id = in_rule_list(OUTBOUND, src_portno) == 1 ? DROP_OUTBOUND : OUTBOUND;
+            break;
         }
 
-        printk("%s\t:\t %d, %d, %d, %d, %d\n",
+        printk("%15s: %d, %d, %d, %d, %d, %d%d%d%d\n",
 		op_msg[op_id],
 		protocol,
 		src_portno,
 		dest_portno,
 		saddr,
 		daddr,
-		0);//tcp_bits); // TODO: obtain tcp_bits, format ip addresses.
+		syn_bit, fin_bit, ack_bit, rst_bit); // TODO: format ip addresses.
 
     }
 
     // check whether to drop packet
-    if (op_id < 3) {
+    if (is_drop(op_id))
         return NF_DROP;
-    } else {
-        return NF_ACCEPT;
+    return NF_ACCEPT;
+
+}
+
+
+static unsigned int spa3_hpre(unsigned int no,
+				struct sk_buff *skb,
+				const struct net_device *in,
+				const struct net_device *out,
+				int (*okfn)(struct sk_buff *)) {
+    return __spa3_hook(skb, INBOUND);
+/*
+    const unsigned int redirect_addr = 0x83010101; //131.1.1.1
+    struct iphdr* ip_header = ip_hdr(skb);
+    unsigned int protocol = ip_header->protocol;
+    unsigned int saddr = ip_header->saddr;
+    unsigned int daddr = ip_header->daddr;
+    int op_id = 7; //default: generic accept
+
+    //printk("spa3_hpre: protocol: %d, saddr: %u, daddr: %u\n", ip_header->protocol, ip_header->saddr, ip_header->daddr); //sanity check.
+
+    // assume all relevant packets are TCP packets.
+    if (ip_header->protocol == IPPROTO_TCP) {
+
+        // extract TCP header
+        struct tcphdr* tcp_header = (struct tcphdr*)((char*)ip_header + sizeof(struct iphdr));
+
+        // obtain the source and destination port numbers
+        unsigned int src_portno = htons(tcp_header->source);
+        unsigned int dest_portno = htons(tcp_header->dest);
+
+        // extract relevant bits
+        unsigned int syn_bit, fin_bit, ack_bit, rst_bit;
+        syn_bit = tcp_header->syn;
+        fin_bit = tcp_header->fin;
+        ack_bit = tcp_header->ack;
+        rst_bit = tcp_header->rst;
+
+        // check if action should be taken on the packet (INBOUND, PROXY)
+        if (in_rule_list(INBOUND, src_portno)) {
+            op_id = DROP_INBOUND;
+        } else {
+            op_id = INBOUND;
+        }
+        if (in_rule_list(PROXY, src_portno)) {
+            op_id = PROXY;
+            ip_header->daddr = redirect_addr; //change destination ip address.
+        }
+
+        printk("%30s: %d, %d, %d, %d, %d, %d%d%d%d\n",
+		op_msg[op_id],
+		protocol,
+		src_portno,
+		dest_portno,
+		saddr,
+		daddr,
+		syn_bit, fin_bit, ack_bit, rst_bit); // TODO: format ip addresses.
+
     }
+
+    // check whether to drop packet
+    if (is_drop(op_id))
+        return NF_DROP;
+    return NF_ACCEPT;
+*/
 }
 
 
@@ -129,8 +212,7 @@ static unsigned int spa3_hforward(unsigned int no,
 				const struct net_device *out,
 				int (*okfn)(struct sk_buff *)) {
     /* forward */
-
-    return NF_ACCEPT;
+    return __spa3_hook(skb, FORWARD);
 }
 
 
@@ -139,9 +221,8 @@ static unsigned int spa3_hpost(unsigned int no,
 				const struct net_device *in,
 				const struct net_device *out,
 				int (*okfn)(struct sk_buff *)) {
-    /* post-routing */
-
-    return NF_ACCEPT;
+    /* post */
+    return __spa3_hook(skb, OUTBOUND);
 }
 
 
