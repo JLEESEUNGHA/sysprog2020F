@@ -287,10 +287,10 @@ static ssize_t spa3_show_read(struct file *file,
                 break;
         }
         printk("curr_pos: %d, type_char: %c, portno: %d\n", curr_pos, type_char, portno);
-	curr_pos = (curr_pos + 1) % MAX_RULE_LIST_LEN;
-
+	
         // generate message string
         len_message = sprintf(message, "spa3: rule index %d: (%c) %d\n", curr_pos, type_char, portno);
+        curr_pos = (curr_pos + 1) % MAX_RULE_LIST_LEN;
 
         // copy string to user buffer
         if (len_message > len) {
