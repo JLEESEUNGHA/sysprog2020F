@@ -82,7 +82,7 @@ int __spa3_hook(struct sk_buff *skb, int type) {
     //printk("spa3_hook: protocol: %d, saddr: %u, daddr: %u\n", ip_header->protocol, ip_header->saddr, ip_header->daddr); //sanity check.
 
     // assume all relevant packets are TCP packets.
-    if (1) {//ip_header->protocol == IPPROTO_TCP) {
+    if (ip_header->protocol == IPPROTO_TCP) {
 
         // extract TCP header
         struct tcphdr* tcp_header = (struct tcphdr*)((char*)ip_header + sizeof(struct iphdr));
@@ -104,8 +104,14 @@ int __spa3_hook(struct sk_buff *skb, int type) {
                 op_id = in_rule_list(INBOUND, src_portno) == 1 ? DROP_INBOUND : INBOUND;
                 if (in_rule_list(PROXY, src_portno)) {
                     op_id = PROXY;
+
+                    // change src and dest addr.
                     ip_header->daddr = redirect_addr;
+                    tcp_header->dest = src_portno;
+
+                    // update local vars
                     daddr = ip_header->daddr;
+                    dest_portno = tcp_header->dest;
                 }
                 break;
             case FORWARD:
@@ -185,9 +191,14 @@ static ssize_t spa3_add_write(struct file *file,
 
     /* REPLACE WITH USER I/O TO SET FIREWALL RULES */
 
-    char buf[7];
-    count = copy_from_user(buf, user_buffer, 7);
-    buf[count] = '\0';
+    char buf[8];
+    int failed_count = copy_from_user(buf, user_buffer, 7);
+    if (failed_count) {
+        printk("spa3: Error while reading from user input.");
+        count = 0;
+        return -1;
+    }
+    buf[7] = '\0';
     printk("spa3: nRules: %d, buf:%s, buf[n]:%c %d %d %d\n", rule_list_len, buf, buf[0], buf[1], buf[2], buf[3]);
 
     switch (user_buffer[0]) {
@@ -220,7 +231,8 @@ static ssize_t spa3_add_write(struct file *file,
             printk(KERN_INFO "spa3: Input invalid.\n");
     }
 
-    return count;
+    count = 7;
+    return 7;
 }
 
 static ssize_t spa3_show_read(struct file *file,
@@ -310,7 +322,6 @@ static const struct file_operations proc_ops_show = {
 static const struct file_operations proc_ops_del = {
     .owner = THIS_MODULE,
     .write = spa3_del_write,
-    .open = spa3_open
 };
 
 
@@ -336,9 +347,9 @@ static int __init spa3_proc_init(void) {
 
     // create /proc directories and files
     proc_dir = proc_mkdir("group32", NULL);
-    proc_file_add = proc_create("add", 0600, proc_dir, &proc_ops_add);
-    proc_file_show = proc_create("show", 0600, proc_dir, &proc_ops_show);
-    proc_file_del = proc_create("del", 0600, proc_dir, &proc_ops_del);
+    proc_file_add = proc_create("add", 0, proc_dir, &proc_ops_add);
+    proc_file_show = proc_create("show", 0, proc_dir, &proc_ops_show);
+    proc_file_del = proc_create("del", 0, proc_dir, &proc_ops_del);
 
     printk(KERN_INFO "spa3: init successful.\n");
 
