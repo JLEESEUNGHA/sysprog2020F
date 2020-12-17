@@ -11,8 +11,6 @@
 #include <linux/tcp.h>
 
 // change as appropriate
-#define SERVER_IP_ADDR 0xc0a83865 //192.168.56.101 //doesn't work, ref to output to fix
-#define CLIENT_IP_ADDR 0x0a00020f //10.0.2.15  //doesn't work, ref to output to fix
 #define MAX_RULE_LIST_LEN 1000
 #define MAX_MSG_LEN 1000
 #define TEST_PORT 1111
@@ -48,7 +46,7 @@ const char* op_msg[8] = {
  
 // define function to check whether a packet should be dropped
 int is_drop(int op_id) {
-    if (op_id == DROP_INBOUND || op_id == DROP_FORWARD || op_id == DROP_OUTBOUND) {
+    if (op_id == DROP_INBOUND || op_id == DROP_OUTBOUND || op_id == DROP_FORWARD) {
         return 1;
     } else {
         return 0;
@@ -70,6 +68,8 @@ int in_rule_list(int type, unsigned int portno) {
     return 0;
 }
 */
+
+/* define rule list check function */
 ///*
 int in_rule_list(int type, unsigned int portno) {
     int i = 0;
@@ -134,7 +134,7 @@ int __spa3_hook(struct sk_buff *skb, int type) {
                 break;
         }
 
-        printk("%15s: %d, %d, %d, %d.%d.%d.%d, %d.%d.%d.%d, %d%d%d%d\n",
+        printk("%-15s: %d, %d, %d, %d.%d.%d.%d, %d.%d.%d.%d, %d%d%d%d\n",
 		op_msg[op_id],
 		protocol,
 		src_portno,
@@ -230,7 +230,6 @@ static ssize_t spa3_add_write(struct file *file,
             printk(KERN_INFO "spa3: Outbound rule added.\n");
             break;
         case 'F':
-
             kstrtol((buf+2), 10, &tmp);
             rule_list[rule_list_len][0] = (int) tmp;
             rule_list[rule_list_len++][1] = FORWARD;
